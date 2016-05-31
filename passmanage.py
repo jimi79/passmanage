@@ -22,9 +22,7 @@
 
 
 
-
 # parse arg like git : http://chase-seibert.github.io/blog/2014/03/21/python-multilevel-argparse.html
-
 
 import argparse
 import base64
@@ -52,12 +50,22 @@ def add(params):
 	context = params[0]
 	login = params[1]
 	password = generate_pw()
-	echo = "Enter password (%s) : " % password
-	pwtemp = getpass.getpass(echo) 
-	if (pwtemp == ""):
-		pwtemp = password
-	pwlist[context] = {"login": login, "password": password} 
-	list_save(key, pwlist) 
+	
+	# first check if it exists, then confirm ?
+	ok=True
+	if (context in pwlist.keys()):
+		a = input('This entry already exists, override ? [y/N] ')
+		if (a.lower() != 'y'):
+			ok=False
+
+	if ok:
+		echo = "Enter password (%s) : " % password
+		pwtemp = getpass.getpass(echo) 
+		if (pwtemp != ""):
+			password = pwtemp
+
+		pwlist[context] = {"login": login, "password": password} 
+		list_save(key, pwlist) 
 	return None
 
 def decrypt(key, ciphertext):
@@ -87,7 +95,7 @@ def encrypt(key, plaintext):
 def generate_pw():
 	random.seed()
 	count=random.randrange(8,12)
-	return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(count))
+	return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(count))
 
 def get_db_pass():
 	return getpass.getpass('db file password : ')
@@ -192,12 +200,12 @@ def search_or_del(val, action):
 		if action == 'return':
 			return pwlist[res[0]]
 		if action == 'remove':
-			print(pwlist)
-			del pwlist[res[0]]
-			print(pwlist)
-			print("%s removed" % res[0])
-			list_save(key, pwlist)
-			return 1
+			a = input('Remove %s ? [y/N] ' % res[0])
+			if (a.lower() == 'y'): 
+				del pwlist[res[0]]
+				print("%s removed" % res[0])
+				list_save(key, pwlist)
+				return 1
 
 
 def remove(params):
