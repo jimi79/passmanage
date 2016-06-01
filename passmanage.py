@@ -185,16 +185,7 @@ def search(params): # params is a list of sys.argv
 
 
 def search_or_del(reg_context, reg_login, action): #todo add paramter to search by login, and search proprely (how with regexp ??? i guess i'll have to do a loop now, as key will be an array of dictionnaries
-# so , a loop to regexp both values
-# and change save and load to use pickle instead of json, which i dislike, but meh
-
-# i'm just not sure an array as a key is a good solution. but other solution is a sql db, which would be a pb to encode
-# so, it's a loop on dico.keys(), and re.match && re.match before calling the result ok
-
-# note : for search and remove, if login parameter is empty, then don't try to match it (or try to match it empty, which will return always ok anyway)
-
 	pwlist = list_load() 
-	print(pwlist)
 	res = []
 	reskey = []
 	for i in pwlist.keys():
