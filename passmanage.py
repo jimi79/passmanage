@@ -176,16 +176,15 @@ def search(params): # params is a list of sys.argv
 	else:
 		reg_login = None
 
-	context, login, password = search_or_del(reg_context, reg_login, 'return') 
-	if (context != None):
-		print('Context : %s' % context)
-		print('Login : %s' % login)
-		print('Password : %s' % password) 
+	pwlist = list_load()
+	res = search_db(pwlist, reg_context, reg_login) 
+	if (res != None):
+		print('Context : %s' % res[0])
+		print('Login : %s' % res[1])
+		print('Password : %s' % pwlist[res]['password']) 
 	return None
 
-
-def search_or_del(reg_context, reg_login, action): #todo add paramter to search by login, and search proprely (how with regexp ??? i guess i'll have to do a loop now, as key will be an array of dictionnaries
-	pwlist = list_load() 
+def search_db(pwlist, reg_context, reg_login): # return the index if only one found, None otherwise
 	res = []
 	reskey = []
 	for i in pwlist.keys():
@@ -202,28 +201,17 @@ def search_or_del(reg_context, reg_login, action): #todo add paramter to search 
 
 	if len(res) == 0:
 		print("No result found")
-		return None, None, None
+		return None
 
 	if len(res) > 1:
 		print("Multiples results found :")
 		for i in res:
 			print("Context %s, login %s" % (i['context'], i['login'])) 
-		if (action == 'remove'):
-			print("Nothing removed")
-		return None, None, None
+		return None
 
 	if len(res) == 1:
-		if action == 'return':
-			return res[0]['context'], res[0]['login'], res[0]['password']
-		if action == 'remove':
-			a = input('Remove login %s from context %s ? [y/N] ' % (res[0]['login'], res[0]['context']))
-			if (a.lower() == 'y'): 
-				del pwlist[reskey[0]]
-				print("Removed")
-				list_save(pwlist)
-				return None, None, None
-
-
+		return reskey[0]
+			
 def remove(params):
 	if (len(params) < 1):
 		display_usage(command = 'remove')
@@ -236,7 +224,14 @@ def remove(params):
 	else:
 		reg_login = None
 
-	res = search_or_del(reg_context, reg_login, 'remove') 
+	pwlist = list_load()
+	res = search_db(pwlist, reg_context, reg_login) 
+	if res != None:
+		a = input('Remove login %s from context %s ? [y/N] ' % (res[0], res[1]))
+		if (a.lower() == 'y'): 
+			del pwlist[res]
+			print("Removed")
+			list_save(pwlist) 
 	return None
 
 def parse_main(param):
@@ -270,7 +265,7 @@ def main():
 		if (func in [search, remove]):
 			db = get_db_filename()
 			if not(os.path.exists(db)):
-				print("Database %s absent. Try adding something first with %s add <context> <login>" % [db, program_name()])
+				print("Database %s absent. Try adding something first with %s add <context> <login>" % (db, program_name()))
 				sys.exit(1)
 				return None
 
