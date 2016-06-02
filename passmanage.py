@@ -3,12 +3,16 @@
 
 # apt-get install python3-crypto
 
+
+# todo : better error msg if exceeption while opening the file
+
 import argparse
 import base64
 import binascii 
 from Crypto.Cipher import XOR
 import getpass
 import json
+from operator import itemgetter
 import os.path
 import pickle
 import random
@@ -33,7 +37,13 @@ def add(params):
 	
 	# first check if it exists, then confirm ?
 	ok=True
-	if ((context, login) in pwlist.keys()):
+
+	try:
+		idx = get_index(pwlist, context, login)
+	except ValueError:
+		idx = -1
+
+	if (idx != -1):
 		a = input('This entry already exists, override ? [y/N] ')
 		if (a.lower() != 'y'):
 			ok=False
@@ -51,7 +61,12 @@ def add(params):
 					break
 				print("Password don't match, again") 
 
-		pwlist[(context, login)] = {"password": password} 
+		item = {'context':context, 'login':login, 'password':password}
+
+		if (idx != -1):
+			pwlist[idx] = item
+		else:
+			pwlist.append(item)
 		list_save(key, pwlist) 
 	return None
 
@@ -73,14 +88,16 @@ def display_usage(**params):
 	if (command == 'add') or (command == ''):
 		print("  %s add <context> <login> : add a password for a given context and login." % (program_name()))
 		print("    example : %s add context facebook foobar password_b4r" % (program_name()))
-	if (command == 'search') or (command == ''):
-		print("  %s search <context> <login> : return a password." % (program_name()))
-		print("    <context> is a regexp. If multiples match, return a list of matches without passwords") 
 	if (command == 'changepw') or (command == ''):
 		print("  %s changepw : change the db password." % (program_name())) 
+	if (command == 'list') or (command == ''):
+		print("  %s list : list all context/logins." % (program_name()))
 	if (command == 'remove') or (command == ''):
 		print("  %s remove <context> <login> : remove password for the given context and login." % (program_name()))
 		print("    <context> is a regexp. If multiples match, return a list of matches and remove none")
+	if (command == 'search') or (command == ''):
+		print("  %s search <context> <login> : return a password." % (program_name()))
+		print("    <context> is a regexp. If multiples match, return a list of matches without passwords") 
 	# allow a -f for remove, maybe
 
 def encrypt(key, plaintext):
@@ -120,6 +137,12 @@ def get_db_filename():
 	else:
 		return default_conf
 
+def get_index(pwlist, context, login):
+	return get_keys(pwlist).index((context, login))
+
+def get_keys(pwlist):
+	return [(i['context'], i['login']) for i in pwlist] 
+
 def init(params):
 	if (len(params) != 1):
 		display_usage(command = 'init')
@@ -142,21 +165,29 @@ def init(params):
 			outfile.write(djson) 
 		return None 
 
+def list(params):
+	key, pwlist = list_load() 
+	for i in pwlist:
+		print("Context %s, login %s" % (i['context'], i['login']))
+		
+
 def list_load(): # open the file and return the list 
 	filename = get_db_filename()
 	if os.path.exists(filename):
 		key = get_db_pass(save = False) 
 		with open(filename, 'r') as infile:
 			cdatas = infile.read() 
-		datas = decrypt(key, cdatas) 
-		return key, pickle.loads(datas)
+		datas = decrypt(key, cdatas).decode('utf-8') 
+		#return key, pickle.loads(datas)
+		return key, json.loads(datas) 
 	else:
-		return None, {} 
+		return None, []
 
 def list_save(key, pwlist): # save the file 
 	if key == None:
-		key = get_db_pass(save = True)
-	datas = pickle.dumps(pwlist)
+		key = get_db_pass(save = True) 
+	pwlist = sorted(pwlist, key = itemgetter('context', 'login')) 
+	datas = json.dumps(pwlist)
 	filename = get_db_filename()
 	cdatas = encrypt(key, datas) 
 	with open(filename, 'w') as outfile:
@@ -186,25 +217,32 @@ def search(params): # params is a list of sys.argv
 	key, pwlist = list_load()
 	res = search_db(pwlist, reg_context, reg_login) 
 	if (res != None):
-		print('Context : %s' % res[0])
-		print('Login : %s' % res[1])
+		print('Context : %s' % pwlist[res]['context'])
+		print('Login : %s' % pwlist[res]['login'])
 		print('Password : %s' % pwlist[res]['password']) 
 	return None
 
 def search_db(pwlist, reg_context, reg_login): # return the index if only one found, None otherwise
+	reg_context = '^' + reg_context + '$'
+	if reg_login != None:
+		reg_login = '^' + reg_login + '$'
 	res = []
-	reskey = []
-	for i in pwlist.keys():
-		ok = True
-		if (re.match(reg_context, i[0]) == None):
-			ok = False
-		else:
-			if ((reg_login != None) and
-			 	  (re.match(reg_login, i[1]) == None)):
-				ok = False 
-		if ok:
-			res.append({'context': i[0], 'login': i[1], 'password': pwlist[i]['password']})
-			reskey.append(i)
+	idx = []
+	cpt = 0
+	keys = get_keys(pwlist)
+	cpt = 0
+	for i in pwlist:
+		ok = False
+		if (re.match(reg_context, i['context'])):
+			if (reg_login == None):
+				ok = True
+			else:
+				if (re.match(reg_login, i['login'])):
+					ok = True
+			if ok:
+				res.append(i)
+				idx.append(cpt) 
+		cpt = cpt + 1 
 
 	if len(res) == 0:
 		print("No result found")
@@ -217,7 +255,7 @@ def search_db(pwlist, reg_context, reg_login): # return the index if only one fo
 		return None
 
 	if len(res) == 1:
-		return reskey[0]
+		return idx[0]
 			
 def remove(params):
 	if (len(params) < 1):
@@ -232,24 +270,25 @@ def remove(params):
 		reg_login = None
 
 	key, pwlist = list_load()
-	res = search_db(pwlist, reg_context, reg_login) 
-	if res != None:
-		a = input('Remove login %s from context %s ? [y/N] ' % (res[0], res[1]))
+	idx = search_db(pwlist, reg_context, reg_login) 
+	if idx != None:
+		a = input('Remove login %s from context %s ? [y/N] ' % (pwlist[idx]['login'], pwlist[idx]['context']))
 		if (a.lower() == 'y'): 
-			del pwlist[res]
+			del pwlist[idx]
 			print("Removed")
 			list_save(key, pwlist) 
 	return None
 
 def parse_main(param):
-	list = {
+	act_list = {
 		'add': add,
 		'changepw': changepw,
 		'init': init,
+		'list': list,
 		'remove': remove,
 		'search': search}
-	if (param in list.keys()):
-		return list[param]
+	if (param in act_list.keys()):
+		return act_list[param]
 	else:
 		return None
 	
