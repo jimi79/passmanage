@@ -3,15 +3,6 @@
 
 # apt-get install python3-crypto
 
-# write in git : 
-# rahhhhhhhhhhh, my key is my context, meaning i can have only one account per context.
-# i need to change the key for an array of context and login
-# pb : in json, array index can't be a tuple. so i need to not use json 
-# other solution : contatenate context and value, but that means good by regexp
-
-# i think save another way, with a tuple as an index, even if it's strange
-
-
 import argparse
 import base64
 import binascii 
@@ -35,7 +26,7 @@ def add(params):
 		sys.exit(1) # exit right away
 		return None 
 
-	pwlist = list_load()
+	key, pwlist = list_load()
 	context = params[0]
 	login = params[1]
 	password = generate_pw()
@@ -48,14 +39,27 @@ def add(params):
 			ok=False
 
 	if ok:
-		echo = "Enter password (%s) : " % password
-		pwtemp = getpass.getpass(echo) 
-		if (pwtemp != ""):
-			password = pwtemp
+		echo = "Enter password (%s) : " % password 
+		while True:
+			pwtemp = getpass.getpass(echo) 
+			if (pwtemp == ""):
+				break
+			else:
+				pass2 = getpass.getpass('Confirm : ')
+				if (pwtemp == pass2):
+					password = pwtemp
+					break
+				print("Password don't match, again") 
 
 		pwlist[(context, login)] = {"password": password} 
-		list_save(pwlist) 
+		list_save(key, pwlist) 
 	return None
+
+def changepw(params):
+	key, pwlist = list_load()
+	key = get_db_pass(save = True)
+	list_save(key, pwlist)
+
 
 def decrypt(key, ciphertext):
   cipher = XOR.new(key)
@@ -71,7 +75,9 @@ def display_usage(**params):
 		print("    example : %s add context facebook foobar password_b4r" % (program_name()))
 	if (command == 'search') or (command == ''):
 		print("  %s search <context> <login> : return a password." % (program_name()))
-		print("    <context> is a regexp. If multiples match, return a list of matches without passwords")
+		print("    <context> is a regexp. If multiples match, return a list of matches without passwords") 
+	if (command == 'changepw') or (command == ''):
+		print("  %s changepw : change the db password." % (program_name())) 
 	if (command == 'remove') or (command == ''):
 		print("  %s remove <context> <login> : remove password for the given context and login." % (program_name()))
 		print("    <context> is a regexp. If multiples match, return a list of matches and remove none")
@@ -143,12 +149,13 @@ def list_load(): # open the file and return the list
 		with open(filename, 'r') as infile:
 			cdatas = infile.read() 
 		datas = decrypt(key, cdatas) 
-		return pickle.loads(datas)
+		return key, pickle.loads(datas)
 	else:
-		return {} 
+		return None, {} 
 
-def list_save(pwlist): # save the file 
-	key = get_db_pass(save = True)
+def list_save(key, pwlist): # save the file 
+	if key == None:
+		key = get_db_pass(save = True)
 	datas = pickle.dumps(pwlist)
 	filename = get_db_filename()
 	cdatas = encrypt(key, datas) 
@@ -176,7 +183,7 @@ def search(params): # params is a list of sys.argv
 	else:
 		reg_login = None
 
-	pwlist = list_load()
+	key, pwlist = list_load()
 	res = search_db(pwlist, reg_context, reg_login) 
 	if (res != None):
 		print('Context : %s' % res[0])
@@ -224,22 +231,23 @@ def remove(params):
 	else:
 		reg_login = None
 
-	pwlist = list_load()
+	key, pwlist = list_load()
 	res = search_db(pwlist, reg_context, reg_login) 
 	if res != None:
 		a = input('Remove login %s from context %s ? [y/N] ' % (res[0], res[1]))
 		if (a.lower() == 'y'): 
 			del pwlist[res]
 			print("Removed")
-			list_save(pwlist) 
+			list_save(key, pwlist) 
 	return None
 
 def parse_main(param):
 	list = {
 		'add': add,
+		'changepw': changepw,
 		'init': init,
-		'search': search,
-		'remove': remove}
+		'remove': remove,
+		'search': search}
 	if (param in list.keys()):
 		return list[param]
 	else:
@@ -271,4 +279,10 @@ def main():
 
 		func(params) 
 
-main()
+
+try:
+	main()
+except KeyboardInterrupt:
+	print("\nCancelled") # \n because questions are always after somethg, and user might mostly break during a question in that program
+except:
+	raise
